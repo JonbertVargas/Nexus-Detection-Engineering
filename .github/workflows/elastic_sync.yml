@@ -5,26 +5,23 @@ on:
     branches:
       - main
     paths:
-      - '**.toml'
-      - 'detections\**'
+      - 'detections/**.toml'
   workflow_dispatch:
 
 jobs:
   elastic-detections-update:
     runs-on: ubuntu-latest
-    env:
-      ELASTIC_KEY: ${{ secrets.ELASTIC_KEY }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11.17'
 
       - name: Get Changed Files
         id: changed-files
-        uses: tj-actions/changed-files@v37
+        uses: tj-actions/changed-files@v44
 
       - name: Run Update Script
         env:
