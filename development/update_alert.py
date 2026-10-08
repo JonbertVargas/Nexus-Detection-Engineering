@@ -1,10 +1,11 @@
 import os
 import requests
+import tomllib
 
 # Your base Elastic Cloud endpoint (do not include ?rule_id= at the end of the URL)
 url = "https://my-security-project-b4f666.kb.us-east4.gcp.elastic.cloud/api/detection_engine/rules"
 
-aapi_key = os.environ['ELASTIC_KEY']
+api_key = os.environ['ELASTIC_KEY']
 
 headers = {
     'Content-Type': 'application/json;charset=UTF-8',
