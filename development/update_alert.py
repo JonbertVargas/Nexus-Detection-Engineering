@@ -4,22 +4,60 @@ import requests
 # Your base Elastic Cloud endpoint (do not include ?rule_id= at the end of the URL)
 url = "https://my-security-project-b4f666.kb.us-east4.gcp.elastic.cloud/api/detection_engine/rules"
 
-api_key = os.environ.get('ELASTIC_KEY')
+aapi_key = os.environ['ELASTIC_KEY']
+
 headers = {
+    'Content-Type': 'application/json;charset=UTF-8',
     'kbn-xsrf': 'true',
-    'Content-Type': 'application/json',
-    'Authorization': f'ApiKey {api_key}'
+    'Authorization': 'ApiKey ' + api_key
 }
 
-# The payload must include the rule_id so Elastic knows which rule to target,
-# followed by only the specific fields you want to modify.
-update_payload = {
-    "rule_id": "00000000-0000-0000-0000-000000000001",
-    "risk_score": 75,
-    "severity": "high",
-    "description": "UPDATED: reduced risk score"
-}
+changed_files = os.environ["CHANGED_FILES"]
 
-# Use requests.patch() to execute the partial update
-elastic_data = requests.patch(url, headers=headers, json=update_payload).json()
-print(f"Updated Rule '{elastic_data.get('name')}': New Risk Score is {elastic_data.get('risk_score')}")
+data = ""
+for root, dirs, files in os.walk("detections/"):
+    for file in files:
+        if file in changed_files:
+            data = "{\n"
+            if file.endswith(".toml"):
+                full_path = os.path.join(root, file)
+                with open(full_path,"rb") as toml:
+                    alert = tomllib.load(toml)
+                if alert['rule']['type'] == "query": # query based alert
+                    required_fields = ['author','description', 'name','rule_id','risk_score','severity','type','query','threat']
+                elif alert['rule']['type'] == "eql": # event correlation alert
+                    required_fields = ['author','description', 'name','rule_id','risk_score','severity','type','query','language','threat']
+                elif alert['rule']['type'] == "threshold": # threshold based alert
+                    required_fields = ['author','description', 'name','rule_id','risk_score','severity','type','query','threshold','threat']
+                else:
+                    print("Unsupported rule type found in: " + full_path)
+                    break
+                
+                for field in alert['rule']:
+                    if field in required_fields:
+                        if type(alert['rule'][field]) == list:
+                            data += "  " + "\"" + field + "\": " + str(alert['rule'][field]).replace("'","\"") + "," + "\n"
+                        elif type(alert['rule'][field]) == str:
+                            if field == 'description':
+                                data += "  " + "\"" + field + "\": \"" + str(alert['rule'][field]).replace("\n"," ").replace("\"","\\\"").replace("\\","\\\\") + "\"," + "\n"
+                            elif field == 'query':
+                                data += "  " + "\"" + field + "\": \"" + str(alert['rule'][field]).replace("\\","\\\\").replace("\"","\\\"").replace("\n"," ") + "\"," + "\n"
+                            else:
+                                data += "  " + "\"" + field + "\": \"" + str(alert['rule'][field]).replace("\n"," ").replace("\"","\\\"") + "\"," + "\n"
+                        elif type(alert['rule'][field]) == int:
+                            data += "  " + "\"" + field + "\": " + str(alert['rule'][field]) + "," + "\n"
+                        elif type(alert['rule'][field]) == dict:
+                            data += "  " + "\"" + field + "\": " + str(alert['rule'][field]).replace("'","\"") + "," + "\n"
+
+                data += "  \"enabled\": true\n}"
+            
+            rule_id = alert['rule']['rule_id']
+            url = url + "?rule_id=" + rule_id
+        
+            elastic_data = requests.put(url, headers=headers, data=data).json()
+        
+            for key in elastic_data:
+                if key == "status_code":
+                    if 404 == elastic_data["status_code"]:
+                        elastic_data = requests.post(url, headers=headers, data=data).json()
+                        print(elastic_data)
